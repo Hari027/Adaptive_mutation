@@ -38,6 +38,7 @@ class Snake:
           - 4 normalised distances to walls (up/right/down/left)
         """
         hx, hy = self.body[0]
+        body_set = set(self.body[1:])  # O(1) lookups instead of O(n)
         state  = []
 
         # 8 rays: N NE E SE S SW W NW
@@ -47,7 +48,7 @@ class Snake:
             x, y = hx + dx, hy + dy
             hit  = False
             while 0 <= x < config.GRID_W and 0 <= y < config.GRID_H:
-                if (x, y) in self.body[1:]:
+                if (x, y) in body_set:
                     hit = True; break
                 dist += 1
                 x += dx; y += dy
@@ -62,7 +63,7 @@ class Snake:
             while 0 <= x < config.GRID_W and 0 <= y < config.GRID_H:
                 if (x, y) == (fx, fy):
                     found = True; break
-                if (x, y) in self.body[1:]:
+                if (x, y) in body_set:
                     break
                 x += dx; y += dy
             state.append(1.0 if found else 0.0)
@@ -117,6 +118,8 @@ class Snake:
             self.alive = False
 
     def compute_fitness(self):
-        self.fitness = (self.steps) + (2 ** self.score + self.score ** 2.1 * 500) - (self.score ** 1.2 * (0.25 * self.steps) ** 1.3)
-        self.fitness = max(self.fitness, 0.1)
+        if self.score == 0:
+            self.fitness = self.steps * 0.1  # small reward for surviving at all
+        else:
+            self.fitness = self.score * 1000 + (self.score / self.steps) * 500
         return self.fitness

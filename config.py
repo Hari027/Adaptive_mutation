@@ -27,6 +27,8 @@ MUT_STR_MIN      = 0.05            # Minimum allowed mutation strength
 MUT_STR_MAX      = 1.5             # Maximum allowed mutation strength
 ELITE_K          = 8               # top agents kept unchanged
 TOURNAMENT_K     = 5               # tournament selection size
+SHARING_RADIUS   = 5.0             # fitness sharing niche radius
+USE_ADAPTIVE_GA  = True            # toggle adaptive mutation (set from UI)
 
 # ─────────────────────────────────────────────
 #  NN ARCHITECTURE
@@ -37,7 +39,7 @@ LAYER_SIZES      = [24, 16, 8, 4]  # 24 inputs → 16 → 8 → 4 outputs
 #  LOOP CONFIGURATION
 # ─────────────────────────────────────────────
 FPS_DEFAULT      = 30
-RENDER_TOP_N     = 1               # how many snakes to show per gen
+RENDER_TOP_N     = 3               # how many snakes to show per gen
 
 # ─────────────────────────────────────────────
 #  COLOURS

@@ -23,16 +23,18 @@ from genetic_algorithm import GeneticAlgorithm
 from ui_renderer import Renderer
 
 def plot_results(ga):
-    """ADAPTIVE MUTATION CHANGE: Save research graphs on exit."""
+    """Save research graphs on exit."""
     if not ga.history['fitness']:
         return
+
+    mode = "adaptive" if config.USE_ADAPTIVE_GA else "standard"
 
     plt.figure(figsize=(12, 5))
     
     # Plot 1: Fitness
     plt.subplot(1, 2, 1)
     plt.plot(ga.history['fitness'], color='forestgreen', linewidth=2)
-    plt.title('Agent Performance: Best Fitness vs Generations')
+    plt.title(f'Best Fitness vs Generations ({mode.upper()})')
     plt.xlabel('Generations')
     plt.ylabel('Fitness Score')
     plt.grid(alpha=0.3)
@@ -40,16 +42,19 @@ def plot_results(ga):
     # Plot 2: Mutation Rate
     plt.subplot(1, 2, 2)
     plt.plot(ga.history['mutation'], color='royalblue', linewidth=2)
-    plt.title('Adaptive Strategy: Mutation Rate vs Generations')
+    plt.title(f'Mutation Rate vs Generations ({mode.upper()})')
     plt.xlabel('Generations')
     plt.ylabel('Mutation Rate')
     plt.grid(alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig('ga_adaptive_results.png')
-    print(f"\n[SUMMARY] Research data saved to 'ga_adaptive_results.png'")
+    filename = f'ga_results_{mode}.png'
+    plt.savefig(filename)
+    print(f"\n[SUMMARY] Research data saved to '{filename}'")
     print(f"[SUMMARY] Total Generations: {ga.generation - 1}")
-    print(f"[SUMMARY] Final Diversity:   {ga.history['diversity'][-1]:.4f}" if ga.history['diversity'] else "")
+    print(f"[SUMMARY] Mode: {mode.upper()}")
+    if ga.history['diversity']:
+        print(f"[SUMMARY] Final Diversity:   {ga.history['diversity'][-1]:.4f}")
 
 def run():
     pygame.init()
@@ -68,50 +73,74 @@ def run():
     renderer = Renderer(screen, font_big, font_med, font_sm)
     clock    = pygame.time.Clock()
 
-    ga      = GeneticAlgorithm()
-    snakes  = [Snake(nn) for nn in ga.population]
-
+    # ── STATE: "menu" or "running" ──
+    state   = "menu"
+    ga      = None
+    snakes  = []
     paused  = False
     fps_cap = config.FPS_DEFAULT
-    frame   = 0
 
     while True:
-        # ── events ──
+        mouse_pos = pygame.mouse.get_pos()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                plot_results(ga)
+                if ga:
+                    plot_results(ga)
                 pygame.quit(); sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_q, pygame.K_ESCAPE):
-                    plot_results(ga)
+                    if ga:
+                        plot_results(ga)
                     pygame.quit(); sys.exit()
-                if event.key == pygame.K_SPACE:
-                    paused = not paused
-                if event.key == pygame.K_r:
-                    ga     = GeneticAlgorithm()
-                    snakes = [Snake(nn) for nn in ga.population]
-                if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
-                    fps_cap = min(fps_cap + 10, 300)
-                if event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
-                    fps_cap = max(fps_cap - 10, 5)
 
+            # ── MENU state events ──
+            if state == "menu":
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if renderer.hit_toggle(event.pos):
+                        config.USE_ADAPTIVE_GA = not config.USE_ADAPTIVE_GA
+                    elif renderer.hit_start(event.pos):
+                        # Initialise GA and transition to running
+                        ga     = GeneticAlgorithm()
+                        snakes = [Snake(nn) for nn in ga.population]
+                        paused = False
+                        state  = "running"
+
+            # ── RUNNING state events ──
+            elif state == "running":
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        paused = not paused
+                    if event.key == pygame.K_r:
+                        ga     = GeneticAlgorithm()
+                        snakes = [Snake(nn) for nn in ga.population]
+                    if event.key in (pygame.K_PLUS, pygame.K_EQUALS, pygame.K_KP_PLUS):
+                        fps_cap = min(fps_cap + 10, 300)
+                    if event.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                        fps_cap = max(fps_cap - 10, 5)
+
+        # ── MENU rendering ──
+        if state == "menu":
+            renderer.draw_start_menu(mouse_pos)
+            pygame.display.flip()
+            clock.tick(30)
+            continue
+
+        # ── RUNNING logic ──
         if not paused:
-            # step all alive snakes
             for s in snakes:
                 if s.alive:
                     s.step()
 
-            # check if generation done
             if not any(s.alive for s in snakes):
                 ga.evaluate(snakes)
                 ga.next_generation(snakes)
                 snakes = [Snake(nn) for nn in ga.population]
 
-        # ── render ──
+        # ── RUNNING rendering ──
         screen.fill(config.C_BG)
         renderer.draw_grid()
 
-        # draw best alive snake (or best overall)
         alive_snakes = [s for s in snakes if s.alive]
         show = sorted(alive_snakes, key=lambda s: s.score, reverse=True)[:config.RENDER_TOP_N] if alive_snakes else []
         for s in show:
@@ -120,8 +149,8 @@ def run():
         renderer.draw_panel(ga, clock.get_fps(), paused, snakes)
         pygame.display.flip()
         clock.tick(fps_cap)
-        frame += 1
 
 
 if __name__ == "__main__":
     run()
+

@@ -39,11 +39,15 @@ class GeneticAlgorithm:
         return max(pool, key=lambda s: s.fitness).nn
 
     def crossover(self, p1: NeuralNetwork, p2: NeuralNetwork) -> NeuralNetwork:
-        f1, f2  = p1.get_flat(), p2.get_flat()
-        mask    = np.random.rand(len(f1)) < 0.5
-        child_f = np.where(mask, f1, f2)
-        child   = NeuralNetwork()
-        child.set_flat(child_f)
+        """Layer-wise crossover: swap entire layers to preserve co-adapted weights."""
+        child = NeuralNetwork()
+        for i in range(len(p1.weights)):
+            if random.random() < 0.5:
+                child.weights[i] = p1.weights[i].copy()
+                child.biases[i] = p1.biases[i].copy()
+            else:
+                child.weights[i] = p2.weights[i].copy()
+                child.biases[i] = p2.biases[i].copy()
         return child
 
     def mutate(self, nn: NeuralNetwork) -> NeuralNetwork:
@@ -54,7 +58,18 @@ class GeneticAlgorithm:
         nn.set_flat(f)
         return nn
 
+    def apply_fitness_sharing(self, snakes):
+        """Penalise snakes that are too similar to each other."""
+        weights = np.array([s.nn.get_flat() for s in snakes])
+        for i, s in enumerate(snakes):
+            distances = np.linalg.norm(weights - weights[i], axis=1)
+            niche_count = np.sum(distances < config.SHARING_RADIUS)
+            s.fitness /= niche_count
+
     def next_generation(self, snakes):
+        # Apply fitness sharing before sorting
+        self.apply_fitness_sharing(snakes)
+
         snakes.sort(key=lambda s: s.fitness, reverse=True)
         self.best_score   = max(s.score   for s in snakes)
         self.best_fitness = snakes[0].fitness
@@ -62,24 +77,23 @@ class GeneticAlgorithm:
         self.avg_fitness_history.append(avg)
         self.best_fitness_history.append(self.best_fitness)
 
-        # ADAPTIVE MUTATION CHANGE: Combined logic (Strategy A & B)
         diversity = self.calculate_diversity()
-        
-        # Strategy A: Fitness-based
-        if self.best_fitness > self.last_best_fitness:
-            self.stagnation_counter = 0
-            # Progress -> Decrease mutation (exploitation)
-            self.mutation_rate = max(config.MUT_RATE_MIN, self.mutation_rate * config.MUT_STEP_DOWN)
-            self.mutation_strength = max(config.MUT_STR_MIN, self.mutation_strength * config.MUT_STEP_DOWN)
-        else:
-            self.stagnation_counter += 1
-            
-        # Strategy B: Diversity-based or stagnation
-        if self.stagnation_counter >= config.STAGNATION_N or diversity < config.DIVERSITY_THRESHOLD:
-            # Need exploration -> Increase mutation rate and strength
-            self.mutation_rate = min(config.MUT_RATE_MAX, self.mutation_rate * config.MUT_STEP_UP)
-            self.mutation_strength = min(config.MUT_STR_MAX, self.mutation_strength * config.MUT_STEP_UP)
-            self.stagnation_counter = 0 # reset to allow gradual increase/decrease
+
+        if config.USE_ADAPTIVE_GA:
+            # Mutually exclusive strategies to avoid conflicts
+            if self.best_fitness > self.last_best_fitness:
+                # Progress -> exploit (decrease mutation)
+                self.stagnation_counter = 0
+                self.mutation_rate = max(config.MUT_RATE_MIN, self.mutation_rate * config.MUT_STEP_DOWN)
+                self.mutation_strength = max(config.MUT_STR_MIN, self.mutation_strength * config.MUT_STEP_DOWN)
+            elif self.stagnation_counter >= config.STAGNATION_N or diversity < config.DIVERSITY_THRESHOLD:
+                # Stagnated or converged -> explore (increase mutation)
+                self.mutation_rate = min(config.MUT_RATE_MAX, self.mutation_rate * config.MUT_STEP_UP)
+                self.mutation_strength = min(config.MUT_STR_MAX, self.mutation_strength * config.MUT_STEP_UP)
+                self.stagnation_counter = 0
+            else:
+                self.stagnation_counter += 1
+        # else: STANDARD GA — mutation_rate and mutation_strength stay fixed
             
         self.last_best_fitness = self.best_fitness
         
@@ -89,7 +103,8 @@ class GeneticAlgorithm:
         self.history['strength'].append(self.mutation_strength)
         self.history['diversity'].append(diversity)
         
-        print(f"Gen {self.generation} | Best: {self.best_fitness:.2f} | Mut: {self.mutation_rate:.4f} | Str: {self.mutation_strength:.4f} | Div: {diversity:.4f}")
+        mode = "ADAPTIVE" if config.USE_ADAPTIVE_GA else "STANDARD"
+        print(f"Gen {self.generation} [{mode}] | Best: {self.best_fitness:.2f} | Mut: {self.mutation_rate:.4f} | Str: {self.mutation_strength:.4f} | Div: {diversity:.4f}")
 
         new_pop = []
         # elitism
